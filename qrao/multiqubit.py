@@ -168,7 +168,7 @@ ENCODING_TO_STATES = {
 
 @dataclass
 class DecisionVariable:
-    problem_idx: int
+    idx: int
     partition_idx: int
     operator: OperatorBase
 
@@ -236,11 +236,14 @@ def partition(
 ) -> Tuple[List[Partition], List[DecisionVariable], int]:
     partitions = []
     dvars = []
-    current_qubit = 0
+    qubit_idx = 0
+    partition_idx = 0
     for color, color_dvar_ids in enumerate(coloring):
-        for partition_idx in range(0, len(color_dvar_ids), max_dvars_per_partition):
+        for color_partition_idx in range(
+            0, len(color_dvar_ids), max_dvars_per_partition
+        ):
             partition_dvar_ids = color_dvar_ids[
-                partition_idx : partition_idx + max_dvars_per_partition
+                color_partition_idx : color_partition_idx + max_dvars_per_partition
             ]
             num_partition_dvars = len(partition_dvar_ids)
             num_partition_qubits = max(
@@ -248,7 +251,7 @@ def partition(
             )
             partition_dvars = [
                 DecisionVariable(
-                    problem_idx=dvar_idx,
+                    idx=dvar_idx,
                     partition_idx=partition_idx,
                     operator=ENCODING_TO_OPERATORS[num_partition_dvars][
                         num_partition_qubits
@@ -256,13 +259,13 @@ def partition(
                 )
                 for dvar_partition_idx, dvar_idx in enumerate(partition_dvar_ids)
             ]
-            partition_qubits = list(
-                range(current_qubit, current_qubit + num_partition_qubits)
-            )
+            partition_qubits = list(range(qubit_idx, qubit_idx + num_partition_qubits))
             dvars.extend(partition_dvars)
             partitions.append(Partition(color, partition_dvars, partition_qubits))
-            current_qubit += num_partition_qubits
-    num_qubits = current_qubit
+            qubit_idx += num_partition_qubits
+            partition_idx += 1
+    num_qubits = qubit_idx
+    dvars = sorted(dvars, key=lambda dvar: dvar.idx)
     return partitions, dvars, num_qubits
 
 
@@ -313,7 +316,6 @@ def generate_operator(
                     dvar_j.operator, dvar_j_partition.qubits, num_qubits
                 )
                 op_terms.append(coefficient * normalization * dvar_pair_op_term)
-
     return SummedOp(op_terms)
 
 
@@ -355,7 +357,7 @@ def dvar_values_to_state(
         lambda x, y: x ^ y,
         [
             dvar_values_to_partition_state(
-                partition, [dvar_values[dvar.problem_idx] for dvar in partition.dvars]
+                partition, [dvar_values[dvar.idx] for dvar in partition.dvars]
             )
             for partition in partitions
         ],
