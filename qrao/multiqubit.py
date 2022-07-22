@@ -1,11 +1,13 @@
 from typing import Tuple, List
 
+from functools import reduce
 from dataclasses import dataclass
 
 import numpy as np
 import retworkx as rx
 
 from qiskit.opflow import OperatorBase, MatrixOp, SummedOp, I, X, Y, Z
+from qiskit.quantum_info import Statevector
 from qiskit_optimization.problems.quadratic_program import QuadraticProgram
 
 
@@ -27,7 +29,7 @@ measures = [
 ]
 
 operators = [
-    MatrixOp(np.outer(measure[0], measure[0]) + np.outer(measure[1], measure[1]))
+    MatrixOp(np.outer(measure[0], measure[0]) - np.outer(measure[1], measure[1]))
     for measure in measures
 ]
 
@@ -37,9 +39,136 @@ ENCODING_TO_OPERATORS = {
     3: {1: [X, Y, Z], 2: operators},
 }
 
+ENCODING_TO_STATES = {
+    1: {1: [Statevector(np.array([1.0, 0.0])), Statevector(np.array([0.0, 1.0]))]},
+    2: {
+        1: [
+            [
+                Statevector(np.array([-np.sin(np.pi / 8), np.cos(np.pi / 8)])),
+                Statevector(np.array([np.cos(np.pi / 8), -np.sin(np.pi / 8)])),
+            ],
+            [
+                Statevector(np.array([np.sin(np.pi / 8), np.cos(np.pi / 8)])),
+                Statevector(np.array([np.cos(np.pi / 8), np.sin(np.pi / 8)])),
+            ],
+        ]
+    },
+    3: {
+        1: [
+            [
+                [
+                    Statevector(
+                        np.array(
+                            [
+                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                    Statevector(
+                        np.array(
+                            [
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                ],
+                [
+                    Statevector(
+                        np.array(
+                            [
+                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                    Statevector(
+                        np.array(
+                            [
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                ],
+            ],
+            [
+                [
+                    Statevector(
+                        np.array(
+                            [
+                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                    Statevector(
+                        np.array(
+                            [
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                ],
+                [
+                    Statevector(
+                        np.array(
+                            [
+                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                    Statevector(
+                        np.array(
+                            [
+                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
+                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
+                            ]
+                        )
+                    ),
+                ],
+            ],
+        ],
+        2: [
+            [
+                [
+                    Statevector(np.array([1.0, 0.0, 0.0, 0.0])),
+                    Statevector((1.0 / np.sqrt(3.0)) * np.array([1.0, 1.0, 1.0, 0.0])),
+                ],
+                [
+                    Statevector((1.0 / np.sqrt(3.0)) * np.array([1.0, -1.0, 0.0, 1.0])),
+                    Statevector(np.array([0.0, 1.0, 0.0, 0.0])),
+                ],
+            ],
+            [
+                [
+                    Statevector((1.0 / np.sqrt(3.0)) * np.array([-1.0, 0.0, 1.0, 1.0])),
+                    Statevector(np.array([0.0, 0.0, 1.0, 0.0])),
+                ],
+                [
+                    Statevector(np.array([0.0, 0.0, 0.0, 1.0])),
+                    Statevector((1.0 / np.sqrt(3.0)) * np.array([0.0, 1.0, -1.0, 1.0])),
+                ],
+            ],
+        ],
+    },
+}
+
 
 @dataclass
 class DecisionVariable:
+    problem_idx: int
     partition_idx: int
     operator: OperatorBase
 
@@ -119,12 +248,13 @@ def partition(
             )
             partition_dvars = [
                 DecisionVariable(
+                    problem_idx=dvar_idx,
                     partition_idx=partition_idx,
                     operator=ENCODING_TO_OPERATORS[num_partition_dvars][
                         num_partition_qubits
                     ][dvar_partition_idx],
                 )
-                for dvar_partition_idx, _ in enumerate(partition_dvar_ids)
+                for dvar_partition_idx, dvar_idx in enumerate(partition_dvar_ids)
             ]
             partition_qubits = list(
                 range(current_qubit, current_qubit + num_partition_qubits)
@@ -134,15 +264,6 @@ def partition(
             current_qubit += num_partition_qubits
     num_qubits = current_qubit
     return partitions, dvars, num_qubits
-
-
-# def term_to_op(num_qubits, dvar_to_op, subcolors, *dvars: int) -> PauliOp:
-#   ops = [I] * num_qubits
-#   for dvar in dvars:
-#       subcolor_idx, op = dvar_to_op[dvar]
-#       qubits = subcolors[subcolor_idx].qubits
-#       ops = ops[:qubits[0]] + [op] + ops[qubits[-1]+1:]
-#   return reduce(lambda x, y: x ^ y, ops)
 
 
 def pad_dvar_operator(
@@ -215,4 +336,27 @@ def encode(
         num_dvars,
         num_qubits,
     )
-    return operator, partitions
+    return operator, partitions, constant_term
+
+
+def dvar_values_to_partition_state(
+    partition: Partition, dvar_values: List[int]
+) -> Statevector:
+    state = ENCODING_TO_STATES[partition.num_dvars][partition.num_qubits]
+    for dvar_value in dvar_values:
+        state = state[dvar_value]
+    return state
+
+
+def dvar_values_to_state(
+    dvar_values: List[int], partitions: List[Partition]
+) -> Statevector:
+    return reduce(
+        lambda x, y: x ^ y,
+        [
+            dvar_values_to_partition_state(
+                partition, [dvar_values[dvar.problem_idx] for dvar in partition.dvars]
+            )
+            for partition in partitions
+        ],
+    )
