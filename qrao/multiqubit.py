@@ -29,7 +29,16 @@ measures = [
 ]
 
 operators = [
-    MatrixOp(((np.outer(measure[0], measure[0]) + np.outer(measure[1], measure[1]))))
+    (1 / (np.sqrt(2)))
+    * (
+        (
+            2
+            * MatrixOp(
+                (np.outer(measure[0], measure[0]) + np.outer(measure[1], measure[1]))
+            )
+        )
+        - (I ^ I)
+    )
     for measure in measures
 ]
 
@@ -295,8 +304,12 @@ def generate_operator(
             if coefficient != 0:
                 dvar_i_partition = partitions[dvar_i.partition_idx]
                 dvar_j_partition = partitions[dvar_j.partition_idx]
-                normalization = np.sqrt(
-                    dvar_i_partition.num_dvars * dvar_j_partition.num_dvars
+                normalization = (
+                    dvar_i_partition.num_dvars
+                    ** (1 / (2**dvar_i_partition.num_qubits))
+                ) * (
+                    dvar_j_partition.num_dvars
+                    ** (1 / (2**dvar_j_partition.num_qubits))
                 )
                 dvar_pair_op_term = pad_dvar_operator(
                     dvar_i.operator, dvar_i_partition.qubits, num_qubits
