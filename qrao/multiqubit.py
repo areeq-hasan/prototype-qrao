@@ -29,7 +29,7 @@ measures = [
 ]
 
 operators = [
-    MatrixOp(np.outer(measure[0], measure[0]) - np.outer(measure[1], measure[1]))
+    MatrixOp(((np.outer(measure[0], measure[0]) + np.outer(measure[1], measure[1]))))
     for measure in measures
 ]
 
@@ -39,17 +39,29 @@ ENCODING_TO_OPERATORS = {
     3: {1: [X, Y, Z], 2: operators},
 }
 
+AMPLITUDE_CACHE = {
+    2: {1: [np.cos(np.pi / 8), np.sin(np.pi / 8)]},
+    3: {
+        1: [
+            np.sqrt(1 - 1 / (3 + np.sqrt(3))),
+            1 / np.sqrt(2 * (3 + np.sqrt(3))),
+            1 / np.sqrt(2 * (3 - np.sqrt(3))),
+            1 / np.sqrt(3 + np.sqrt(3)),
+        ]
+    },
+}
+
 ENCODING_TO_STATES = {
-    1: {1: [Statevector(np.array([1.0, 0.0])), Statevector(np.array([0.0, 1.0]))]},
+    1: {1: [Statevector([1, 0]), Statevector([0, 1])]},
     2: {
         1: [
             [
-                Statevector(np.array([-np.sin(np.pi / 8), np.cos(np.pi / 8)])),
-                Statevector(np.array([np.cos(np.pi / 8), -np.sin(np.pi / 8)])),
+                Statevector([AMPLITUDE_CACHE[2][1][0], AMPLITUDE_CACHE[2][1][1]]),
+                Statevector([AMPLITUDE_CACHE[2][1][1], AMPLITUDE_CACHE[2][1][0]]),
             ],
             [
-                Statevector(np.array([np.sin(np.pi / 8), np.cos(np.pi / 8)])),
-                Statevector(np.array([np.cos(np.pi / 8), np.sin(np.pi / 8)])),
+                Statevector([-AMPLITUDE_CACHE[2][1][0], AMPLITUDE_CACHE[2][1][1]]),
+                Statevector([-AMPLITUDE_CACHE[2][1][1], AMPLITUDE_CACHE[2][1][0]]),
             ],
         ]
     },
@@ -58,84 +70,60 @@ ENCODING_TO_STATES = {
             [
                 [
                     Statevector(
-                        np.array(
-                            [
-                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            AMPLITUDE_CACHE[3][1][0],
+                            AMPLITUDE_CACHE[3][1][1] + AMPLITUDE_CACHE[3][1][1] * 1j,
+                        ]
                     ),
                     Statevector(
-                        np.array(
-                            [
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            AMPLITUDE_CACHE[3][1][1] - AMPLITUDE_CACHE[3][1][1] * 1j,
+                            AMPLITUDE_CACHE[3][1][0],
+                        ]
                     ),
                 ],
                 [
                     Statevector(
-                        np.array(
-                            [
-                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            -AMPLITUDE_CACHE[3][1][2] - AMPLITUDE_CACHE[3][1][2] * 1j,
+                            -AMPLITUDE_CACHE[3][1][3],
+                        ]
                     ),
                     Statevector(
-                        np.array(
-                            [
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                                -1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            AMPLITUDE_CACHE[3][1][3],
+                            AMPLITUDE_CACHE[3][1][2] - AMPLITUDE_CACHE[3][1][2] * 1j,
+                        ]
                     ),
                 ],
             ],
             [
                 [
                     Statevector(
-                        np.array(
-                            [
-                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            -AMPLITUDE_CACHE[3][1][2] - AMPLITUDE_CACHE[3][1][2] * 1j,
+                            AMPLITUDE_CACHE[3][1][3],
+                        ]
                     ),
                     Statevector(
-                        np.array(
-                            [
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            -AMPLITUDE_CACHE[3][1][3],
+                            AMPLITUDE_CACHE[3][1][2] - AMPLITUDE_CACHE[3][1][2] * 1j,
+                        ]
                     ),
                 ],
                 [
                     Statevector(
-                        np.array(
-                            [
-                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                - 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            AMPLITUDE_CACHE[3][1][0],
+                            -AMPLITUDE_CACHE[3][1][1] - AMPLITUDE_CACHE[3][1][1] * 1j,
+                        ]
                     ),
                     Statevector(
-                        np.array(
-                            [
-                                np.sqrt(1 - 1 / (3 + np.sqrt(3))),
-                                1 / np.sqrt(2 * (3 + np.sqrt(3)))
-                                + 1j * 1 / np.sqrt(2 * (3 + np.sqrt(3))),
-                            ]
-                        )
+                        [
+                            -AMPLITUDE_CACHE[3][1][1] + AMPLITUDE_CACHE[3][1][1] * 1j,
+                            AMPLITUDE_CACHE[3][1][0],
+                        ]
                     ),
                 ],
             ],
