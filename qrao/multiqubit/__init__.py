@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from dataclasses import dataclass
 from functools import reduce
@@ -7,21 +7,23 @@ import numpy as np
 import retworkx as rx
 
 from qiskit.opflow import OperatorBase, StateFn, SummedOp, I
+from qiskit.algorithms import MinimumEigensolver
 from qiskit_optimization.problems.quadratic_program import QuadraticProgram
 
 from .partition_encoding import PARTITION_ENCODINGS
 
 
 @dataclass
-class Variable:
+class VariableEncoding:
     index: int
     partition_index: int
     operator: OperatorBase
+    padded_operator: Optional[OperatorBase] = None
 
 
 @dataclass
 class Partition:
-    variables: List[Variable]
+    variables: List[VariableEncoding]
     qubits: List[int]
 
     @property
@@ -31,6 +33,13 @@ class Partition:
     @property
     def num_qubits(self):
         return len(self.qubits)
+
+
+@dataclass
+class ProblemEncoding:
+    operator: OperatorBase
+    partitions: List[Partition]
+    variables: List[VariableEncoding]
 
 
 def extract_terms(
@@ -83,9 +92,9 @@ def partition(
     num_variables: int,
     max_qubits_per_partition: int,
     max_variables_per_partition: int,
-) -> Tuple[List[Partition], List[Variable], int]:
+) -> Tuple[List[Partition], List[VariableEncoding], int]:
     partitions = []
-    variables = [None] * num_variables
+    variables: List[Optional[VariableEncoding]] = [None] * num_variables
     qubit_index = 0
     partition_index = 0
     for _, color_variable_indices in enumerate(coloring):
@@ -100,26 +109,32 @@ def partition(
             num_partition_qubits = max(
                 1, min(max_qubits_per_partition, num_partition_variables - 1)
             )
+            partition_qubits = list(
+                range(qubit_index, qubit_index + num_partition_qubits)
+            )
             partition_variables = []
             for variable_partition_index, variable_index in enumerate(
                 partition_variable_indices
             ):
-                var = Variable(
+                variable = VariableEncoding(
                     index=variable_index,
                     partition_index=partition_index,
                     operator=PARTITION_ENCODINGS[num_partition_variables][
                         num_partition_qubits
                     ].operators[variable_partition_index],
                 )
-                variables[variable_index] = var
-                partition_variables.append(var)
-            partition_qubits = list(
-                range(qubit_index, qubit_index + num_partition_qubits)
-            )
+                variables[variable_index] = variable
+                partition_variables.append(variable)
             partitions.append(Partition(partition_variables, partition_qubits))
             qubit_index += num_partition_qubits
             partition_index += 1
     num_qubits = qubit_index
+    for variable_index, variable in enumerate(variables):
+        variables[variable_index].padded_operator = pad_variable_operator(
+            variable.operator,
+            partitions[variable.partition_index].qubits,
+            num_qubits,
+        )
     return partitions, variables, num_qubits
 
 
@@ -134,22 +149,22 @@ def pad_variable_operator(
 
 
 def generate_problem_operator(
-    variables: List[Variable],
+    variables: List[VariableEncoding],
     partitions: List[Partition],
+    constant_term: float,
     linear_terms: np.ndarray,
     quadratic_terms: np.ndarray,
     num_qubits: int,
 ) -> OperatorBase:
     operator_terms = []
+    operator_terms.append(constant_term * (I ^ num_qubits))
     for variable_index, variable in enumerate(variables):
         coefficient = linear_terms[variable_index]
         if coefficient != 0:
-            variable_partition = partitions[variable.partition_index]
-            normalization = np.sqrt(variable_partition.num_variables)
-            operator = pad_variable_operator(
-                variable.operator, variable_partition.qubits, num_qubits
+            normalization = np.sqrt(partitions[variable.partition_index].num_variables)
+            operator_terms.append(
+                coefficient * normalization * variable.padded_operator
             )
-            operator_terms.append(coefficient * normalization * operator)
     for variable_i_index, variable_i in enumerate(variables):
         for variable_j_index, variable_j in enumerate(variables):
             coefficient = quadratic_terms[variable_i_index][variable_j_index]
@@ -162,12 +177,11 @@ def generate_problem_operator(
                         for partition in (variable_i_partition, variable_j_partition)
                     ]
                 )
-                operator = pad_variable_operator(
-                    variable_i.operator, variable_i_partition.qubits, num_qubits
-                ) @ pad_variable_operator(
-                    variable_j.operator, variable_j_partition.qubits, num_qubits
+                operator_terms.append(
+                    coefficient
+                    * normalization
+                    * (variable_i.padded_operator @ variable_j.padded_operator)
                 )
-                operator_terms.append(coefficient * normalization * operator)
     return SummedOp(operator_terms)
 
 
@@ -175,7 +189,7 @@ def encode_problem(
     problem: QuadraticProgram,
     max_qubits_per_partition: int = 2,
     max_variables_per_partition: int = 3,
-):
+) -> ProblemEncoding:
     num_variables = problem.get_num_vars()
     constant_term, linear_terms, quadratic_terms = extract_terms(problem, num_variables)
     coloring = color(quadratic_terms, num_variables)
@@ -183,13 +197,9 @@ def encode_problem(
         coloring, num_variables, max_qubits_per_partition, max_variables_per_partition
     )
     operator = generate_problem_operator(
-        variables,
-        partitions,
-        linear_terms,
-        quadratic_terms,
-        num_qubits,
+        variables, partitions, constant_term, linear_terms, quadratic_terms, num_qubits
     )
-    return operator, partitions, constant_term
+    return ProblemEncoding(operator, partitions, variables)
 
 
 def encode_partition_configuration(
@@ -214,3 +224,26 @@ def encode_configuration(
         for partition in partitions
     ]
     return reduce(lambda x, y: x ^ y, encoded_partition_configurations)
+
+
+def _sign(value) -> int:
+    return 0 if (value > 0) else 1
+
+
+def find_optimal_configuration(
+    problem_operator: OperatorBase,
+    variables: List[VariableEncoding],
+    minimum_eigensolver: MinimumEigensolver,
+):
+    variable_operators = [
+        variable.padded_operator.to_matrix_op() for variable in variables
+    ]
+    relaxed_results = minimum_eigensolver.compute_minimum_eigenvalue(
+        problem_operator.to_matrix_op(), aux_operators=variable_operators
+    )
+    variable_values = [value[0] for value in relaxed_results.aux_operator_eigenvalues]
+    rounded_variable_values = [
+        _sign(value) if not np.isclose(0, value) else np.random.randint(2)
+        for value in variable_values
+    ]
+    return rounded_variable_values
