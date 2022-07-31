@@ -7,7 +7,7 @@ import numpy as np
 from qiskit.opflow import StateFn, OperatorBase, X, Y, Z, MatrixOp
 
 
-class PartitionEncoding:
+class EncodingScheme:
     def __init__(self, operators: List[OperatorBase], states: List[StateFn]):
         num_vars: int = len(operators)
         if num_vars < 1:
@@ -94,14 +94,14 @@ AMPLITUDE_CACHE = {
     },
 }
 
-PARTITION_ENCODINGS = {
+ENCODING_SCHEMES = {
     1: {
-        1: PartitionEncoding(
+        1: EncodingScheme(
             operators=[Z], states=[StateFn(np.array([1, 0])), StateFn(np.array([0, 1]))]
         )
     },
     2: {
-        1: PartitionEncoding(
+        1: EncodingScheme(
             operators=[X, Z],
             states=[
                 StateFn(np.array([AMPLITUDE_CACHE[2][1][0], AMPLITUDE_CACHE[2][1][1]])),
@@ -116,7 +116,7 @@ PARTITION_ENCODINGS = {
         )
     },
     3: {
-        1: PartitionEncoding(
+        1: EncodingScheme(
             operators=[X, Y, Z],
             states=[
                 StateFn(
@@ -185,7 +185,7 @@ PARTITION_ENCODINGS = {
                 ),
             ],
         ),
-        2: PartitionEncoding(
+        2: EncodingScheme(
             operators=[
                 MatrixOp(
                     np.array(

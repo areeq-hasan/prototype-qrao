@@ -1,29 +1,28 @@
-from typing import List
-
 from itertools import product
 
 import numpy as np
 
-# from qiskit.algorithms.minimum_eigen_solvers import NumPyMinimumEigensolver
+from qiskit.algorithms.minimum_eigen_solvers import NumPyMinimumEigensolver
 
-from qiskit.opflow import OperatorBase
 from qiskit_optimization.problems.quadratic_program import QuadraticProgram
 
-from qrao.multiqubit import encode_problem, encode_configuration, ProblemEncoding
+from qrao.multiqubit.encoding.problem import encode_problem, QuadraticProgramEncoding
+from qrao.multiqubit.encoding.configuration import encode_configuration
+from qrao.multiqubit.optimization import find_optimal_configuration
+
 from qrao.utils import get_random_maxcut_qp
 
 
 def verify_commutation(
     problem: QuadraticProgram,
-    encoding: ProblemEncoding,
+    encoding: QuadraticProgramEncoding,
     num_variables: int,
 ):
     for configuration in product([0, 1], repeat=num_variables):
-        configuration_list = list(configuration)
-        state = encode_configuration(configuration_list, encoding.partitions)
+        state = encode_configuration(list(configuration), encoding.partitions)
         encoding_eval = np.real(state.primitive.expectation_value(encoding.operator))
         objective_eval = (
-            problem.objective.evaluate(configuration_list)
+            problem.objective.evaluate(list(configuration))
             * problem.objective.sense.value
         )
         assert np.isclose(encoding_eval, objective_eval)
@@ -109,24 +108,13 @@ def test_adaptive_11p_32p():
     verify_commutation(problem, encoding, 7)
 
 
-# def test_find_optimal_configuration():
-#     problem = get_random_maxcut_qp(degree=1, num_nodes=6, seed=1)
-#     operator, _, variables, _ = encode_problem(
-#         problem, max_qubits_per_partition=1, max_variables_per_partition=1
-#     )
-#     optimal_configuration = find_optimal_configuration(
-#         operator, variables, NumPyMinimumEigensolver()
-#     )
-#     print(optimal_configuration)
-
-
-# def test_find_optimal_configuration():
-#     problem = get_random_maxcut_qp(degree=1, num_nodes=8, seed=1)
-#     operator, _, variables, _ = encode_problem(
-#         problem, max_qubits_per_partition=2, max_variables_per_partition=3
-#     )
-#     optimal_configuration = find_optimal_configuration(
-#         operator, variables, NumPyMinimumEigensolver()
-#     )
-#     fval = problem.objective.evaluate(optimal_configuration)
-#     print()
+def test_find_optimal_configuration():
+    problem = get_random_maxcut_qp(degree=1, num_nodes=6, seed=1)
+    encoding = encode_problem(
+        problem, max_qubits_per_partition=1, max_variables_per_partition=1
+    )
+    optimal_configuration = find_optimal_configuration(
+        encoding, NumPyMinimumEigensolver()
+    )
+    fval = problem.objective.evaluate(optimal_configuration)
+    print(fval)
